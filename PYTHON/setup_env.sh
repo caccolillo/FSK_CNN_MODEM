@@ -31,7 +31,7 @@ python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA av
 echo ""
 echo "=== Setup Complete! ==="
 echo "Virtual environment is activated."
-echo "You can now run: python train_fsk_cnn.py"
+echo "You can now run: python3 train_net.py.py"
 echo ""
 echo "To deactivate later, run: deactivate"
 echo "To reactivate, run: source fsk_cnn_env/bin/activate"
