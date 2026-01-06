@@ -3,9 +3,9 @@
 
 // Top-level function for HLS synthesis
 void fsk_cnn_demod(
-    hls::stream<fixed_t> &input_I,
-    hls::stream<fixed_t> &input_Q,
-    hls::stream<int> &predicted_bit
+    hls::stream<axis_data> &input_I,
+    hls::stream<axis_data> &input_Q,
+    hls::stream<axis_output> &predicted_bit
 ) {
 #pragma HLS INTERFACE mode=axis port=input_I
 #pragma HLS INTERFACE mode=axis port=input_Q
@@ -15,7 +15,7 @@ void fsk_cnn_demod(
     // Intermediate arrays
     fixed_t conv_out[SAMPLES_PER_SYMBOL];
     fixed_t pooled[POOLED_SIZE];
-    fixed_t output[POOLED_SIZE];
+    fixed_t output[FC_OUT];
 
     // Buffer to store input samples
     fixed_t I_buffer[SAMPLES_PER_SYMBOL];
@@ -23,18 +23,21 @@ void fsk_cnn_demod(
 
 #pragma HLS ARRAY_PARTITION variable=conv_out complete dim=1
 #pragma HLS ARRAY_PARTITION variable=pooled complete dim=1
+#pragma HLS ARRAY_PARTITION variable=output complete dim=1
 #pragma HLS ARRAY_PARTITION variable=I_buffer complete dim=1
 #pragma HLS ARRAY_PARTITION variable=Q_buffer complete dim=1
 
     // Read input streams into buffers
     READ_I_LOOP: for (int i = 0; i < SAMPLES_PER_SYMBOL; i++) {
 #pragma HLS PIPELINE II=1
-        I_buffer[i] = input_I.read();
+        axis_data temp = input_I.read();
+        I_buffer[i] = temp.data;
     }
 
     READ_Q_LOOP: for (int i = 0; i < SAMPLES_PER_SYMBOL; i++) {
 #pragma HLS PIPELINE II=1
-        Q_buffer[i] = input_Q.read();
+        axis_data temp = input_Q.read();
+        Q_buffer[i] = temp.data;
     }
     
     // Layer 1: Convolution (1x1 kernel, pointwise operation)
@@ -56,15 +59,18 @@ void fsk_cnn_demod(
     
     // Layer 3: Fully Connected Layer
     FC_LOOP: for (int out = 0; out < FC_OUT; out++) {
-#pragma HLS PIPELINE II=1
+#pragma HLS UNROLL
         fixed_t sum = FC_BIAS[out];
-        for (int in = 0; in < FC_IN; in++) {
+        FC_INNER: for (int in = 0; in < FC_IN; in++) {
+#pragma HLS UNROLL
             sum += pooled[in] * FC_WEIGHT[out][in];
         }
         output[out] = sum;
     }
     
-    // Determine predicted bit (argmax) and write to output stream
-    int result = (output[1] > output[0]) ? 1 : 0;
+    // Determine predicted bit (argmax) and write to output stream with tlast
+    axis_output result;
+    result.data = (output[1] > output[0]) ? 1 : 0;
+    result.last = 1;  // Set tlast high for single output
     predicted_bit.write(result);
 }

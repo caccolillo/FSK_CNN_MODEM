@@ -5,6 +5,12 @@
 // Fixed-point type: 16-bit total, 8 fractional bits
 typedef ap_fixed<16, 8> fixed_t;
 
+// AXI Stream structure with tlast
+struct axis_data {
+    fixed_t data;
+    ap_uint<1> last;
+};
+
 // Model parameters (from float_params.txt)
 const int IN_CHANNELS = 2;
 const int OUT_CHANNELS = 1;
@@ -27,8 +33,15 @@ const fixed_t FC_WEIGHT[FC_OUT][FC_IN] = {
 const fixed_t FC_BIAS[FC_OUT] = {fixed_t(0.22219384), fixed_t(0.24075383)};
 
 
+// AXI Stream structure for output with tlast
+struct axis_output {
+    int data;
+    ap_uint<1> last;
+};
+
+
 void fsk_cnn_demod(
-    hls::stream<fixed_t> &input_I,
-    hls::stream<fixed_t> &input_Q,
-    hls::stream<int> &predicted_bit
+    hls::stream<axis_data> &input_I,
+    hls::stream<axis_data> &input_Q,
+    hls::stream<axis_output> &predicted_bit
 );
