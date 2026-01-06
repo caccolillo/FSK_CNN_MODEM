@@ -27,4 +27,8 @@ const fixed_t FC_WEIGHT[FC_OUT][FC_IN] = {
 const fixed_t FC_BIAS[FC_OUT] = {fixed_t(0.22219384), fixed_t(0.24075383)};
 
 
-void fsk_cnn_demod(fixed_t input_I[SAMPLES_PER_SYMBOL],fixed_t input_Q[SAMPLES_PER_SYMBOL],fixed_t output[FC_OUT],int *predicted_bit);
+void fsk_cnn_demod(
+    hls::stream<fixed_t> &input_I,
+    hls::stream<fixed_t> &input_Q,
+    hls::stream<int> &predicted_bit
+);
