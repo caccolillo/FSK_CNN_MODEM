@@ -2,8 +2,10 @@
 #include <hls_stream.h>
 #include <ap_int.h>
 
-// Fixed-point type: 16-bit total, 8 fractional bits
-typedef ap_fixed<16, 8> fixed_t;
+// Fixed-point types
+typedef ap_fixed<16, 8> fixed_t;     // For input/intermediate values
+typedef ap_fixed<48, 24> acc_t;      // Wider accumulator for precision
+typedef ap_int<8> quant_t;           // For quantized weights
 
 // AXI Stream structure with tlast
 struct axis_data {
@@ -11,7 +13,12 @@ struct axis_data {
     ap_uint<1> last;
 };
 
-// Model parameters (from float_params.txt)
+struct axis_output {
+    ap_uint<1> data;
+    ap_uint<1> last;
+};
+
+// Model parameters
 const int IN_CHANNELS = 2;
 const int OUT_CHANNELS = 1;
 const int SAMPLES_PER_SYMBOL = 8;
@@ -19,27 +26,28 @@ const int POOLED_SIZE = 4;
 const int FC_IN = 4;
 const int FC_OUT = 2;
 
-// Conv layer parameters (1x1 kernel)
-const fixed_t CONV_WEIGHT[OUT_CHANNELS][IN_CHANNELS] = {
-    {fixed_t(0.00638873), fixed_t(2.4992344)}
+// ===== QUANTIZED PARAMETERS (from quantized_params.txt) =====
+
+// Conv layer: quantized weights (int8) and scales
+const quant_t CONV_WEIGHT_QUANT[OUT_CHANNELS][IN_CHANNELS] = {
+    {-15, 15}
 };
-const fixed_t CONV_BIAS[OUT_CHANNELS] = {fixed_t(-0.62816364)};
+const fixed_t CONV_WEIGHT_SCALE = 0.083095;
 
-// FC layer parameters
-const fixed_t FC_WEIGHT[FC_OUT][FC_IN] = {
-    {fixed_t(-0.10768079), fixed_t(-1.1741734), fixed_t(0.3632769), fixed_t(1.4843116)},
-    {fixed_t(0.86062443), fixed_t(1.5053908), fixed_t(-0.62919515), fixed_t(-1.29314)}
+const quant_t CONV_BIAS_QUANT[OUT_CHANNELS] = {0};
+const fixed_t CONV_BIAS_SCALE = 0.0;  // Bias is effectively zero
+
+// FC layer: quantized weights (int8) and scales
+const quant_t FC_WEIGHT_QUANT[FC_OUT][FC_IN] = {
+    {-2, -14, 3, 15},
+    {8, 15, -8, -15}
 };
-const fixed_t FC_BIAS[FC_OUT] = {fixed_t(0.22219384), fixed_t(0.24075383)};
+const fixed_t FC_WEIGHT_SCALE = 0.093284;
 
+const quant_t FC_BIAS_QUANT[FC_OUT] = {-15, 15};
+const fixed_t FC_BIAS_SCALE = 0.000619;
 
-// AXI Stream structure for output with tlast
-struct axis_output {
-    int data;
-    ap_uint<1> last;
-};
-
-
+// Function declaration
 void fsk_cnn_demod(
     hls::stream<axis_data> &input_I,
     hls::stream<axis_data> &input_Q,

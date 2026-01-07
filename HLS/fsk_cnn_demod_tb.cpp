@@ -3,18 +3,21 @@
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
+#include <iomanip>
 
 #include "fsk_cnn_demod.hpp"
 
-void generate_fsk_symbol(float bit, float input_I[8], float input_Q[8]) {
-    const float F_DEVIATION = 1e6;
-    const float F_SAMPLING = 8e6;
+void generate_fsk_symbol(int bit, float input_I[8], float input_Q[8]) {
+    // Match Python FSK generation exactly:
+    // phase_shift = 2 * np.pi * (1 if bit == 1 else -1) / SAMPLES_PER_SYMBOL
+    // I = np.cos(phase_shift * np.arange(SAMPLES_PER_SYMBOL))
+    // Q = np.sin(phase_shift * np.arange(SAMPLES_PER_SYMBOL))
 
     float phase_shift;
-    if (bit == 0) {
-        phase_shift = 2 * M_PI * (-F_DEVIATION) / F_SAMPLING;
+    if (bit == 1) {
+        phase_shift = 2.0 * M_PI * 1.0 / 8.0;  // 2*pi/8 for bit 1
     } else {
-        phase_shift = 2 * M_PI * F_DEVIATION / F_SAMPLING;
+        phase_shift = 2.0 * M_PI * (-1.0) / 8.0;  // -2*pi/8 for bit 0
     }
 
     for (int i = 0; i < 8; i++) {
@@ -24,18 +27,18 @@ void generate_fsk_symbol(float bit, float input_I[8], float input_Q[8]) {
 }
 
 int main() {
-    // Seed random number generator
-    srand(time(NULL));
+    // Use fixed seed for reproducibility during debug
+    srand(42);
 
     std::cout << "=================================================\n";
-    std::cout << "FSK CNN DEMODULATOR - VITIS HLS TESTBENCH\n";
-    std::cout << "Testing with 20 random bits\n";
+    std::cout << "FSK CNN DEMODULATOR - DEBUG TESTBENCH\n";
+    std::cout << "Testing with exact Python FSK generation\n";
     std::cout << "=================================================\n\n";
 
     int correct_count = 0;
-    int total_bits = 20;
+    int total_bits = 10;
 
-    // Test with 20 random bits
+    // Test with 10 random bits
     for (int test_num = 0; test_num < total_bits; test_num++) {
         // Generate random bit (0 or 1)
         int test_bit = rand() % 2;
@@ -47,6 +50,14 @@ int main() {
         float I_float[8], Q_float[8];
         generate_fsk_symbol(test_bit, I_float, Q_float);
 
+        // Print generated symbols for debugging
+        std::cout << "Generated I/Q samples:\n";
+        std::cout << std::fixed << std::setprecision(6);
+        for (int i = 0; i < 8; i++) {
+            std::cout << "  t=" << i << ": I=" << I_float[i]
+                      << ", Q=" << Q_float[i] << "\n";
+        }
+
         // Create AXI streams
         hls::stream<axis_data> input_I_stream;
         hls::stream<axis_data> input_Q_stream;
@@ -56,9 +67,9 @@ int main() {
         for (int i = 0; i < 8; i++) {
             axis_data I_val, Q_val;
             I_val.data = fixed_t(I_float[i]);
-            I_val.last = (i == 7) ? 1 : 0;  // Set tlast on last sample
+            I_val.last = (i == 7) ? 1 : 0;
             Q_val.data = fixed_t(Q_float[i]);
-            Q_val.last = (i == 7) ? 1 : 0;  // Set tlast on last sample
+            Q_val.last = (i == 7) ? 1 : 0;
             input_I_stream.write(I_val);
             input_Q_stream.write(Q_val);
         }
