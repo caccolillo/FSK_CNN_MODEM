@@ -50,9 +50,30 @@ module tb_design_1;
         // Create AXI Stream output slave agent
         axi_stream_out_agent = new("axi_stream_out_agent", dut.design_1_i.axi4stream_vip_fifo_demod_bit.inst.IF);
         
-        // DON'T start agents yet - wait for reset to complete
+        $display("[%0t] VIP agents created", $time);
         
-        $display("[%0t] VIP agents created (not started yet)", $time);
+        // Wait for reset to be released
+        wait(resetn == 0); // Wait for reset assertion
+        wait(resetn == 1); // Wait for reset deassertion
+        repeat(50) @(posedge clk); // Stabilization delay
+        
+        $display("[%0t] Starting VIP agents after reset...", $time);
+        
+        // Start the agents
+        axi_stream_i_agent.start_master();
+        axi_stream_q_agent.start_master();
+        axi_stream_out_agent.start_slave();
+        
+        $display("[%0t] VIP agents started", $time);
+        
+        // Configure output stream to always be ready
+        axis_out_ready_gen = axi_stream_out_agent.driver.create_ready("axis_out_ready");
+        axis_out_ready_gen.set_ready_policy(XIL_AXI4STREAM_READY_GEN_SINGLE);
+        axis_out_ready_gen.set_low_time(0);
+        axis_out_ready_gen.set_high_time(1);
+        axi_stream_out_agent.driver.send_tready(axis_out_ready_gen);
+        
+        $display("[%0t] Output ready configured", $time);
     end
     
 
@@ -176,45 +197,24 @@ module tb_design_1;
         $display("=== Starting AXI I/Q Stream Testbench ===");
         $display("========================================");
         
-        // Wait for agents to be created
+        // Hold reset (active low, so resetn=0 means reset asserted)
+        resetn = 0;
+        $display("[%0t] Reset asserted", $time);
+        repeat(20) @(posedge clk);
+        
+        // Release reset
+        resetn = 1;
+        $display("[%0t] Reset released", $time);
+        
+        // Wait for agents to be fully started
         wait(axi_stream_i_agent != null);
         wait(axi_stream_q_agent != null);
         wait(axi_stream_out_agent != null);
         
-        $display("[%0t] Agents created", $time);
+        // Extra wait to ensure agents are fully initialized
+        repeat(100) @(posedge clk);
         
-        // Hold reset (active low, so resetn=0 means reset asserted)
-        resetn = 0;
-        repeat(20) @(posedge clk);
-        
-        $display("[%0t] Releasing reset...", $time);
-        
-        // Release reset
-        resetn = 1;
-        
-        // Wait for the actual signal change and stabilization
-        #1; // Small delay to ensure signal has changed
-        repeat(50) @(posedge clk);
-        
-        $display("[%0t] Reset released and stabilized, starting VIP agents", $time);
-        
-        // NOW start the agents after reset
-        axi_stream_i_agent.start_master();
-        axi_stream_q_agent.start_master();
-        axi_stream_out_agent.start_slave();
-        
-        $display("[%0t] VIP agents started", $time);
-        
-        // Configure output stream to always be ready
-        axis_out_ready_gen = axi_stream_out_agent.driver.create_ready("axis_out_ready");
-        axis_out_ready_gen.set_ready_policy(XIL_AXI4STREAM_READY_GEN_SINGLE);
-        axis_out_ready_gen.set_low_time(0);
-        axis_out_ready_gen.set_high_time(1);
-        axi_stream_out_agent.driver.send_tready(axis_out_ready_gen);
-        
-        $display("[%0t] Output ready signal configured", $time);
-        
-        repeat(10) @(posedge clk);
+        $display("[%0t] Ready to transmit data", $time);
         
         // Start output monitoring
         monitor_output_stream();
