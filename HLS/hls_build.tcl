@@ -3,7 +3,7 @@
 # vitis_hls hls_build.tcl
 # vitis_hls -p hls_proj/hls.app
 
-open_project -reset mean
+open_project -reset fsk_cnn_demod
 set_top fsk_cnn_demod
 add_files fsk_cnn_demod.hpp
 add_files fsk_cnn_demod.cpp
@@ -15,5 +15,5 @@ config_export -format ip_catalog -rtl verilog
 csynth_design
 csim_design -clean
 cosim_design
-export_design -rtl verilog -format ip_catalog -description "mean." -vendor "caccolillo" -display_name "fsk_cnn_demod" -output "../fsk_cnn_demod.zip"
+export_design -rtl verilog -format ip_catalog -description "fsk_cnn_demod." -vendor "caccolillo" -display_name "fsk_cnn_demod" -output "../fsk_cnn_demod.zip"
 exit

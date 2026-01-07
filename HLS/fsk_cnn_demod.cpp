@@ -9,7 +9,8 @@ void fsk_cnn_demod(
 #pragma HLS INTERFACE axis port=input_I
 #pragma HLS INTERFACE axis port=input_Q
 #pragma HLS INTERFACE axis port=predicted_bit
-#pragma HLS INTERFACE s_axilite port=return
+#pragma HLS INTERFACE ap_ctrl_none port=return
+
 
     // Intermediate buffers
     acc_t conv_out[SAMPLES_PER_SYMBOL];
