@@ -13,11 +13,16 @@ module tb_design_1;
     
     // Test parameters
     parameter CLK_PERIOD = 10; // 10ns = 100 MHz
-    parameter NUM_SAMPLES = 1000;
-    parameter real FREQ = 0.01; // Normalized frequency
+    parameter NUM_TEST_BITS = 100;
+    parameter SAMPLES_PER_SYMBOL = 8;
+    parameter real PI = 3.14159265359;
     
     // File handle
     integer output_file;
+    
+    // Test statistics
+    integer correct_count = 0;
+    integer total_bits = 0;
     
     // VIP Agents
     design_1_axi4stream_vip_I_0_mst_t axi_stream_i_agent;
@@ -27,13 +32,12 @@ module tb_design_1;
     // AXI transaction types
     axi4stream_transaction axis_i_trans;
     axi4stream_transaction axis_q_trans;
-    axi4stream_transaction axis_out_trans;
     axi4stream_ready_gen axis_out_ready_gen;
     
     // DUT instance
     design_1_wrapper dut (
         .clock(clk),
-        .reset(~resetn)
+        .reset(resetn)
     );
     
     // Clock generation
@@ -76,128 +80,137 @@ module tb_design_1;
         $display("[%0t] Output ready configured", $time);
     end
     
-
-    
-    // AXI Stream I channel sender task
-    task automatic send_i_stream();
-        logic [15:0] sine_val;
+    // Task to send a single FSK symbol (I and Q channels in parallel)
+    task automatic send_fsk_symbol(
+        input integer test_bit,
+        input integer test_num
+    );
+        real I_samples[SAMPLES_PER_SYMBOL];
+        real Q_samples[SAMPLES_PER_SYMBOL];
+        logic signed [15:0] I_fixed[SAMPLES_PER_SYMBOL];
+        logic signed [15:0] Q_fixed[SAMPLES_PER_SYMBOL];
         logic [1:0] keep_beat;
-        real sine_real;
-        int i;
-        int signed sine_int;
+        real phase_shift;
+        integer i;
         
         begin
-            $display("[%0t] Starting I stream transmission (sine wave)...", $time);
-            
-            keep_beat = 2'b11; // Both bytes valid
-            
-            for (i = 0; i < NUM_SAMPLES; i++) begin
-                // Generate sine wave
-                sine_real = $sin(2.0 * 3.14159265359 * FREQ * real'(i));
-                sine_int = int'($rtoi(sine_real * 32767.0));
-                sine_val = logic'(sine_int[15:0]);
-                
-                // Create AXI Stream transaction
-                axis_i_trans = axi_stream_i_agent.driver.create_transaction($sformatf("i_trans_%0d", i));
-                axis_i_trans.set_data_beat(sine_val);
-                axis_i_trans.set_last(i == (NUM_SAMPLES-1));
-                axis_i_trans.set_keep_beat(keep_beat);
-                
-                // Send transaction
-                axi_stream_i_agent.driver.send(axis_i_trans);
+            // Calculate phase shift based on bit value
+            // Matches Python/C++: phase_shift = 2*pi*(1 if bit==1 else -1)/SAMPLES_PER_SYMBOL
+            if (test_bit == 1) begin
+                phase_shift = 2.0 * PI * 1.0 / SAMPLES_PER_SYMBOL;  // 2*pi/8 for bit 1
+            end else begin
+                phase_shift = 2.0 * PI * (-1.0) / SAMPLES_PER_SYMBOL;  // -2*pi/8 for bit 0
             end
             
-            $display("[%0t] I stream transmission complete", $time);
+            $display("[%0t] Test #%0d - Bit = %0d", $time, test_num + 1, test_bit);
+            $display("-------------------------------------------------");
+            $display("Generated I/Q samples:");
+            
+            // Generate I and Q samples
+            keep_beat = 2'b11; // Both bytes valid
+            
+            for (i = 0; i < SAMPLES_PER_SYMBOL; i++) begin
+                I_samples[i] = $cos(phase_shift * i);
+                Q_samples[i] = $sin(phase_shift * i);
+                
+                // Scale float to 16-bit fixed point (multiply by 2^7 = 128 for Q8.7)
+                I_fixed[i] = $rtoi(I_samples[i] * 128.0);
+                Q_fixed[i] = $rtoi(Q_samples[i] * 128.0);
+                
+                $display("  t=%0d: I=%f (0x%04h), Q=%f (0x%04h)", 
+                         i, I_samples[i], I_fixed[i], Q_samples[i], Q_fixed[i]);
+            end
+            
+            // Send I and Q samples in parallel
+            fork
+                begin : send_i
+                    for (int j = 0; j < SAMPLES_PER_SYMBOL; j++) begin
+                        axis_i_trans = axi_stream_i_agent.driver.create_transaction(
+                            $sformatf("i_trans_test%0d_sample%0d", test_num, j)
+                        );
+                        axis_i_trans.set_data_beat(I_fixed[j]);
+                        axis_i_trans.set_last(j == (SAMPLES_PER_SYMBOL - 1));
+                        axis_i_trans.set_keep_beat(keep_beat);
+                        axi_stream_i_agent.driver.send(axis_i_trans);
+                    end
+                end
+                
+                begin : send_q
+                    for (int j = 0; j < SAMPLES_PER_SYMBOL; j++) begin
+                        axis_q_trans = axi_stream_q_agent.driver.create_transaction(
+                            $sformatf("q_trans_test%0d_sample%0d", test_num, j)
+                        );
+                        axis_q_trans.set_data_beat(Q_fixed[j]);
+                        axis_q_trans.set_last(j == (SAMPLES_PER_SYMBOL - 1));
+                        axis_q_trans.set_keep_beat(keep_beat);
+                        axi_stream_q_agent.driver.send(axis_q_trans);
+                    end
+                end
+            join
+            
+            $display("[%0t] FSK symbol transmission complete", $time);
         end
     endtask
     
-    // AXI Stream Q channel sender task
-    task automatic send_q_stream();
-        logic [15:0] cosine_val;
-        logic [1:0] keep_beat;
-        real cosine_real;
-        int i;
-        int signed cosine_int;
-        
-        begin
-            $display("[%0t] Starting Q stream transmission (cosine wave)...", $time);
-            
-            keep_beat = 2'b11; // Both bytes valid
-            
-            for (i = 0; i < NUM_SAMPLES; i++) begin
-                // Generate cosine wave
-                cosine_real = $cos(2.0 * 3.14159265359 * FREQ * real'(i));
-                cosine_int = int'($rtoi(cosine_real * 32767.0));
-                cosine_val = logic'(cosine_int[15:0]);
-                
-                // Create AXI Stream transaction
-                axis_q_trans = axi_stream_q_agent.driver.create_transaction($sformatf("q_trans_%0d", i));
-                axis_q_trans.set_data_beat(cosine_val);
-                axis_q_trans.set_last(i == (NUM_SAMPLES-1));
-                axis_q_trans.set_keep_beat(keep_beat);
-                
-                // Send transaction
-                axi_stream_q_agent.driver.send(axis_q_trans);
-            end
-            
-            $display("[%0t] Q stream transmission complete", $time);
-        end
-    endtask
-    
-    // AXI Stream output monitor task
-    task automatic monitor_output_stream();
+    // Task to receive and check predicted bit
+    task automatic check_predicted_bit(
+        input integer expected_bit,
+        input integer test_num
+    );
+        axi4stream_monitor_transaction mon_trans;
         logic [31:0] tdata;
         logic tlast;
-        integer sample_count = 0;
-        axi4stream_monitor_transaction mon_trans;
+        integer predicted_bit;
         
         begin
-            // Open output file
-            output_file = $fopen("output_stream.txt", "w");
-            if (output_file == 0) begin
-                $error("Failed to open output file!");
-                $finish;
+            // Wait for output transaction
+            axi_stream_out_agent.monitor.item_collected_port.get(mon_trans);
+            
+            // Extract data
+            tdata = mon_trans.get_data_beat();
+            tlast = mon_trans.get_last();
+            predicted_bit = tdata[0];
+            
+            // Check prediction
+            $display("Actual bit:    %0d", expected_bit);
+            $display("Predicted bit: %0d (tlast=%0d, tdata=0x%08h)", 
+                     predicted_bit, tlast, tdata);
+            
+            if (predicted_bit == expected_bit) begin
+                $display("Result: PASS");
+                correct_count++;
+            end else begin
+                $display("Result: FAIL");
             end
             
-            $display("[%0t] Starting output stream monitoring...", $time);
-            
-            fork
-                begin
-                    while (sample_count < NUM_SAMPLES) begin
-                        // Get transaction from monitor
-                        axi_stream_out_agent.monitor.item_collected_port.get(mon_trans);
-                        
-                        // Extract data
-                        tdata = mon_trans.get_data_beat();
-                        tlast = mon_trans.get_last();
-                        
-                        // Write to file
-                        $fwrite(output_file, "%0d: 0x%08h (dec: %0d) %s\n", 
-                                sample_count, tdata, $signed(tdata), tlast ? "LAST" : "");
-                        
-                        $display("[%0t] Output[%0d]: 0x%08h %s", 
-                                 $time, sample_count, tdata, tlast ? "(LAST)" : "");
-                        
-                        sample_count++;
-                        
-                        if (tlast) break;
-                    end
-                    
-                    $fclose(output_file);
-                    $display("[%0t] Output monitoring complete. %0d samples saved to output_stream.txt", 
-                             $time, sample_count);
-                end
-            join_none
+            $display("");
+            total_bits++;
         end
     endtask
     
     // Main test sequence
     initial begin
-        $display("========================================");
-        $display("=== Starting AXI I/Q Stream Testbench ===");
-        $display("========================================");
+        integer test_bit;
+        integer test_num;
+        //integer seed = 42; // Fixed seed for reproducibility
         
-        // Hold reset (active low, so resetn=0 means reset asserted)
+        $display("=================================================");
+        $display("FSK CNN DEMODULATOR - SystemVerilog TESTBENCH");
+        $display("Testing with exact Python/C++ FSK generation");
+        $display("=================================================");
+        $display("");
+        
+        // Open output file
+        output_file = $fopen("output_results.txt", "w");
+        if (output_file == 0) begin
+            $error("Failed to open output file!");
+            $finish;
+        end
+        
+        $fwrite(output_file, "FSK Demodulator Test Results\n");
+        $fwrite(output_file, "=================================================\n\n");
+        
+        // Hold reset (active low)
         resetn = 0;
         $display("[%0t] Reset asserted", $time);
         repeat(20) @(posedge clk);
@@ -211,37 +224,73 @@ module tb_design_1;
         wait(axi_stream_q_agent != null);
         wait(axi_stream_out_agent != null);
         
-        // Extra wait to ensure agents are fully initialized
+        // Extra wait for initialization
         repeat(100) @(posedge clk);
         
-        $display("[%0t] Ready to transmit data", $time);
+        $display("[%0t] Starting FSK demodulation tests...", $time);
+        $display("");
         
-        // Start output monitoring
-        monitor_output_stream();
+        // Test NUM_TEST_BITS random bits
+        for (test_num = 0; test_num < NUM_TEST_BITS; test_num++) begin
+            // Generate random bit (0 or 1) with fixed seed
+            //test_bit = $urandom(seed) % 2;
+            test_bit = $urandom % 2;
+           
+            // Send FSK symbol
+            send_fsk_symbol(test_bit, test_num);
+            
+            // Allow processing time
+            repeat(20) @(posedge clk);
+            
+            // Check predicted output
+            fork
+                check_predicted_bit(test_bit, test_num);
+            join
+            
+            // Log to file
+            $fwrite(output_file, "Test #%0d: Expected=%0d, Result=%s\n", 
+                    test_num + 1, test_bit, 
+                    (total_bits > 0 && correct_count == total_bits) ? "PASS" : "FAIL");
+            
+            // Small delay between tests
+            repeat(10) @(posedge clk);
+        end
         
-        repeat(10) @(posedge clk);
+        // Print summary
+        $display("=================================================");
+        $display("TEST SUMMARY");
+        $display("=================================================");
+        $display("Total bits tested: %0d", total_bits);
+        $display("Correct predictions: %0d", correct_count);
+        $display("Incorrect predictions: %0d", total_bits - correct_count);
+        $display("Accuracy: %0.1f%%", (100.0 * correct_count / total_bits));
+        $display("=================================================");
         
-        // Start I and Q stream transmission in parallel
-        $display("[%0t] Starting I/Q stream transmission...", $time);
-        fork
-            send_i_stream();
-            send_q_stream();
-        join
+        if (correct_count == total_bits) begin
+            $display("ALL TESTS PASSED!");
+        end else begin
+            $display("SOME TESTS FAILED");
+        end
+        $display("=================================================");
         
-        $display("[%0t] All input streams sent", $time);
+        // Write summary to file
+        $fwrite(output_file, "\n=================================================\n");
+        $fwrite(output_file, "SUMMARY\n");
+        $fwrite(output_file, "=================================================\n");
+        $fwrite(output_file, "Total: %0d, Correct: %0d, Accuracy: %0.1f%%\n", 
+                total_bits, correct_count, (100.0 * correct_count / total_bits));
+        $fwrite(output_file, "Status: %s\n", 
+                (correct_count == total_bits) ? "ALL PASSED" : "SOME FAILED");
         
-        // Wait for output processing to complete
-        repeat(NUM_SAMPLES + 200) @(posedge clk);
+        $fclose(output_file);
+        $display("Results saved to output_results.txt");
         
-        $display("========================================");
-        $display("=== Testbench Complete ===");
-        $display("========================================");
         $finish;
     end
     
     // Timeout watchdog
     initial begin
-        #(CLK_PERIOD * NUM_SAMPLES * 20);
+        #(CLK_PERIOD * NUM_TEST_BITS * SAMPLES_PER_SYMBOL * 100);
         $error("Testbench timeout!");
         $finish;
     end

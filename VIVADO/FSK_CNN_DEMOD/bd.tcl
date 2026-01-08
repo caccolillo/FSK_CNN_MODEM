@@ -193,7 +193,6 @@ proc create_root_design { parentCell } {
 
   # Create ports
   set clock [ create_bd_port -dir I -type clk clock ]
-  set interrupt [ create_bd_port -dir O -type intr interrupt ]
   set reset [ create_bd_port -dir I -type rst reset ]
 
   # Create instance: axi4stream_vip_I, and set properties
@@ -259,7 +258,6 @@ proc create_root_design { parentCell } {
 
   # Create port connections
   connect_bd_net -net clock_1 [get_bd_ports clock] [get_bd_pins axi4stream_vip_I/aclk] [get_bd_pins axi4stream_vip_Q/aclk] [get_bd_pins axi4stream_vip_fifo_demod_bit/aclk] [get_bd_pins axis_data_fifo_I/s_axis_aclk] [get_bd_pins axis_data_fifo_Q/s_axis_aclk] [get_bd_pins axis_data_fifo_demod_bit/s_axis_aclk] [get_bd_pins fsk_cnn_demod_0/ap_clk]
-  connect_bd_net -net fsk_cnn_demod_0_interrupt [get_bd_ports interrupt]
   connect_bd_net -net reset_1 [get_bd_ports reset] [get_bd_pins axi4stream_vip_I/aresetn] [get_bd_pins axi4stream_vip_Q/aresetn] [get_bd_pins axi4stream_vip_fifo_demod_bit/aresetn] [get_bd_pins axis_data_fifo_I/s_axis_aresetn] [get_bd_pins axis_data_fifo_Q/s_axis_aresetn] [get_bd_pins axis_data_fifo_demod_bit/s_axis_aresetn] [get_bd_pins fsk_cnn_demod_0/ap_rst_n]
 
   # Create address segments
@@ -268,7 +266,6 @@ proc create_root_design { parentCell } {
   # Restore current instance
   current_bd_instance $oldCurInst
 
-  validate_bd_design
   save_bd_design
 }
 # End of create_root_design()
@@ -280,4 +277,6 @@ proc create_root_design { parentCell } {
 
 create_root_design ""
 
+
+common::send_gid_msg -ssname BD::TCL -id 2053 -severity "WARNING" "This Tcl script was generated from a block design that has not been validated. It is possible that design <$design_name> may result in errors during validation."
 
