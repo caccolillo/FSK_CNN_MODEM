@@ -1,0 +1,7 @@
+*.log
+*.pth
+*.npz
+*.txt
+*.zip
+*.npy
+*project*
