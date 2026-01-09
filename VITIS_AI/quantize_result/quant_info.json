@@ -1,0 +1,23 @@
+{
+  "param":
+  {
+    "CNNFSK::conv.weight":[[8,5]],
+    "CNNFSK::conv.bias":[[8,7]],
+    "CNNFSK::fc.weight":[[8,6]],
+    "CNNFSK::fc.bias":[[8,9]]
+  },
+  "output":
+  {
+    "CNNFSK::input_0":[[8,6]],
+    "CNNFSK::CNNFSK/Conv1d[conv]/92":[[8,5]],
+    "CNNFSK::CNNFSK/MaxPool1d[maxpool]/102":[[8,5]],
+    "CNNFSK::CNNFSK/Linear[fc]/110":[[8,3]]
+  },
+  "input":
+  {
+
+  },
+  "fast_finetuned":false,
+  "bias_corrected":true,
+  "version":"3.0.0+a44284e+torch1.12.1"
+}

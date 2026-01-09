@@ -1,0 +1,8 @@
+{
+    "lib": "libvart-dpu-runner.so",
+    "filename": "fsk_cnn_u96v2.xmodel",
+    "kernel": [
+        "subgraph_CNNFSK__CNNFSK_Conv1d_conv__92_input_inserted_reshape"
+    ],
+    "target": "DPUCZDX8G_ISA1_B2304"
+}
