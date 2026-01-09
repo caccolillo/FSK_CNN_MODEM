@@ -5,3 +5,5 @@
 *.zip
 *.npy
 *project*
+*.xsa
+*.jou
